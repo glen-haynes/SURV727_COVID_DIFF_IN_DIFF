@@ -1,0 +1,70 @@
+[
+  {
+    "topic": "Health",
+    "indicators": {
+      "SH.MED.BEDS.ZS": "Hospital beds (per 1,000 people)",
+      "SH.MED.PHYS.ZS": "Physicians (per 1,000 people)",
+      "SH.MED.NUMW.P3": "Nurses and midwives (per 1,000 people)",
+      "SH.UHC.SRVS.CV.XD": "UHC service coverage index",
+      "SH.XPD.CHEX.GD.ZS": "Current health expenditure (% of GDP)",
+      "SH.XPD.CHEX.PC.CD": "Current health expenditure per capita (current US$)",
+      "SH.XPD.CHEX.PP.CD": "Current health expenditure per capita, PPP (current international $)",
+      "SH.XPD.OOPC.CH.ZS": "Out-of-pocket expenditure (% of current health expenditure)",
+      "SH.XPD.OOPC.PC.CD": "Out-of-pocket expenditure per capita (current US$)",
+      "SH.XPD.OOPC.PP.CD": "Out-of-pocket expenditure per capita, PPP (current international $)",
+      "SH.UHC.OOPC.10.ZS": "Proportion of population spending more than 10% of household consumption or income on out-of-pocket health care expenditure (%)",
+      "SH.UHC.OOPC.25.ZS": "Proportion of population spending more than 25% of household consumption or income on out-of-pocket health care expenditure (%)",
+      "SH.STA.DIAB.ZS": "Diabetes prevalence (% of population ages 20 to 79)",
+      "SH.PRV.SMOK": "Smoking prevalence, total, ages 15+",
+      "SH.PRV.SMOK.FE": "Smoking prevalence, females (% of adults)",
+      "SH.PRV.SMOK.MA": "Smoking prevalence, males (% of adults)",
+      "SP.DYN.LE00.FE.IN": "Life expectancy at birth, female (years)",
+      "SP.DYN.LE00.IN": "Life expectancy at birth, total (years)",
+      "SP.DYN.LE00.MA.IN": "Life expectancy at birth, male (years)",
+      "SP.DYN.AMRT.FE": "Mortality rate, adult, female (per 1,000 female adults)",
+      "SP.DYN.AMRT.MA": "Mortality rate, adult, male (per 1,000 male adults)",
+      "SH.DYN.NCOM.ZS": "Mortality from CVD, cancer, diabetes or CRD between exact ages 30 and 70 (%)",
+      "SH.DYN.NCOM.FE.ZS": "Mortality from CVD, cancer, diabetes or CRD between exact ages 30 and 70, female (%)",
+      "SH.DYN.NCOM.MA.ZS": "Mortality from CVD, cancer, diabetes or CRD between exact ages 30 and 70, male (%)",
+      "SH.DTH.COMM.ZS": "Cause of death, by communicable diseases and maternal, prenatal and nutrition conditions (% of total)",
+      "SH.DTH.INJR.ZS": "Cause of death, by injury (% of total)",
+      "SH.DTH.NCOM.ZS": "Cause of death, by non-communicable diseases (% of total)"
+    }
+  },
+  {
+    "topic": "Water & Sanitation",
+    "indicators": {
+      "SH.STA.HYGN.ZS": "People with basic handwashing facilities including soap and water (% of population)",
+      "SH.STA.HYGN.UR.ZS": "People with basic handwashing facilities including soap and water, urban (% of urban population)",
+      "SH.STA.HYGN.RU.ZS": "People with basic handwashing facilities including soap and water, rural (% of rural population)",
+      "SH.H2O.BASW.ZS": "People using at least basic drinking water services (% of population)",
+      "SH.H2O.BASW.UR.ZS": "People using at least basic drinking water services, urban (% of urban population)",
+      "SH.H2O.BASW.RU.ZS": "People using at least basic drinking water services, rural (% of rural population)",
+      "SH.H2O.SMDW.ZS": "People using safely managed drinking water services (% of population)",
+      "SH.H2O.SMDW.UR.ZS": "People using safely managed drinking water services, urban (% of urban population)",
+      "SH.H2O.SMDW.RU.ZS": "People using safely managed drinking water services, rural (% of rural population)",
+      "SH.STA.BASS.ZS": "People using at least basic sanitation services (% of population)",
+      "SH.STA.BASS.UR.ZS": "People using at least basic sanitation services, urban (% of urban population)",
+      "SH.STA.BASS.RU.ZS": "People using at least basic sanitation services, rural (% of rural population)",
+      "SH.STA.SMSS.ZS": "People using safely managed sanitation services (% of population)",
+      "SH.STA.SMSS.UR.ZS": "People using safely managed sanitation services, urban (% of urban population)",
+      "SH.STA.SMSS.RU.ZS": "People using safely managed sanitation services, rural (% of rural population)"
+    }
+  },
+  {
+    "topic": "Age & Population",
+    "indicators": {
+      "SP.POP.80UP.FE.5Y": "Population ages 80 and above, female (% of female population)",
+      "SP.POP.80UP.MA.5Y": "Population ages 80 and above, male (% of male population)",
+      "SP.POP.65UP.FE.ZS": "Population ages 65 and above, female (% of total)",
+      "SP.POP.65UP.MA.ZS": "Population ages 65 and above, male (% of total)",
+      "SP.POP.65UP.TO.ZS": "Population ages 65 and above (% of total)",
+      "SP.POP.0014.FE.ZS": "Population ages 0-14, female (% of female population)",
+      "SP.POP.0014.MA.ZS": "Population ages 0-14, male (% of male population)",
+      "SP.POP.0014.TO.ZS": "Population ages 0-14 (% of total population)",
+      "SP.POP.1564.FE.ZS": "Population ages 15-64, female (% of female population)",
+      "SP.POP.1564.MA.ZS": "Population ages 15-64, male (% of male population)",
+      "SP.POP.1564.TO.ZS": "Population ages 15-64 (% of total population)"
+    }
+  }
+]

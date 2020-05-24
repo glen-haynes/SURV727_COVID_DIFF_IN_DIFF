@@ -1,0 +1,663 @@
+---
+title: "Early Analysis of Relative Lock Down Efficacy in Fighting COVID-19" 
+subtitle: "Difference in Differences Modeling by World Bank Groupings"
+author: "Glen Haynes"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+    toc: yes
+    df_print: kable
+params:
+  use_saved_files: TRUE
+  use_wiki_csv: FALSE
+---
+
+```{r, include = FALSE}
+# install.packages('tidyverse')
+# install.packages('tidyselect')
+# install.packages('purrr')
+# install.packages('jsonlite')
+# install.packages('DT')
+# install.packages('tibble')
+# install.packages('reticulate')
+# install.packages('rvest')
+# install.packages('robotstxt')
+# install.packages('readxl')
+# install.packages('datasets')
+# install.packages('growthrates')
+# install.packages('readr')
+# install.packages('ggcorrplot')
+# install.packages('GGally')
+library(tidyverse)
+library(tidyselect)
+library(purrr)
+library(jsonlite)
+library(DT)
+library(tibble)
+library(reticulate)
+library(rvest)
+library(robotstxt)
+library(readxl)
+library(datasets)
+library(growthrates)
+library(readr)
+library(ggcorrplot)
+library(GGally)
+```
+
+## Introduction
+
+
+The spirit of this analysis is exploratory. COVID-19 is a recent phenomenon and many measures of the effects it has on a given population are still being refined. The work here is not meant to be a fully rigorous treatment, but instead the laying out of framework trying to better understand how to approach a problem like this one, and seek ways to understand the effectiveness or our responses to the situation.
+  Identifying and linking relevant data sources from The Center for Systems Science and Engineering (CSSE) at John's Hopkins University with economic and social data from the World Bank along reports of the stay-at-home or lock down order policies governments is one of the efforts put forward here. The goal is to identify the groupings of similar populations with differing policy in place to begin to examine the effectiveness of the policy. Specifically, is there a measureable effect from the implemntation of a lock down order.
+  To explore this we'll look at correlations of the World Bank's relevant COVID-19 indicators among their regional and economic groupings. Finally we'll examine some basic differnce-in-difference modeling among countries grouped by World Bank regions and income level groupings. 
+ [https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv; http://datatopics.worldbank.org/universal-health-coverage/coronavirus/; https://en.wikipedia.org/wiki/COVID-19_pandemic_lockdowns].
+
+## Data
+
+This section describes the data sources and the data gathering process.
+
+```{r, message=FALSE}
+## Load functions ##
+
+source("R/csse_covid_dat.R")
+source("R/csse_merge.R")
+
+## List CSSE files ##
+
+csse_list <- list(
+  "time_series_covid19_confirmed_US.csv",
+  "time_series_covid19_confirmed_global.csv",
+  "time_series_covid19_deaths_US.csv",
+  "time_series_covid19_deaths_global.csv",
+  "time_series_covid19_recovered_global.csv"
+)
+
+csse_dat <- csse_list %>% map(~{
+  csse_covid_dat(.x, 
+                 use_saved_file = params$use_saved_files)
+})
+
+csse_us_merge <- csse_merge(csse_dat, 'us', 'Series')
+
+csse_global_merge <- csse_merge(csse_dat, 'global', 'Series')
+
+rm(csse_dat)
+```
+
+```{r, message = FALSE}
+source("R/wrld_bk_dat.R")
+source("R/wb_ind_lst.R")
+
+## Get World Bank meta data ##
+
+wb_meta <- wrld_bk_dat(use_local_json = params$use_saved_files)
+
+## List of relevant indicators ##
+
+if(params$use_saved_files)
+{
+  wb_relevant_indicators <- wb_ind_lst(dat_loc = "data/covid-indicators.csv")
+}else
+{
+  wb_relevant_indicators <- wb_ind_lst()
+}
+
+## Limit relevant indicators ##
+
+wb_relevant_indicators <- wb_relevant_indicators[c(1, 5, 18, 25, 37, 47),]
+
+## Relevant indicators and other data ##
+
+wb_rel_ind_List <- map2(
+  c(wb_relevant_indicators$id, 'SP.POP.TOTL'), ## Add Population
+  c(wb_relevant_indicators$topic, "Extra_to_rel"),
+  function(x,y){wrld_bk_dat(indicator = x,
+                            date='2015:2020',
+                            use_local_json = TRUE,
+                            save_file = FALSE,
+                            save_dir = 'data/wb-rel-ind-data',
+                            dat_addrs = NULL) %>%
+      mutate(topic = y) %>% 
+      group_by(countryiso3code) %>%
+      group_map(~ .x %>% 
+                  filter(!is.na(value)) %>%
+                  filter(date == max(date))) %>% 
+      bind_rows()}) %>% 
+  bind_rows()
+
+```
+
+```{r, message=FALSE}
+if(params$use_wiki_csv)
+{
+  wiki_lock <- read_csv(wiki_lock, "data/wiki_lock.csv")
+  wiki_no_lock<- read_csv(wiki_no_lock, "data/wiki_no_lock.csv")
+}else
+{
+  if(params$use_saved_files & !params$use_wiki_csv)
+  {
+    use_python("c/Miniconda3/python")
+    wiki_covid_lockdown <- import("wiki_covid_lockdown")
+    
+    wiki_lock_status <- wiki_covid_lockdown$wiki_covid_lockdown(
+      source = "web_page_references/COVID-19 pandemic lockdowns - Wikipedia.html"
+    )
+    
+    wiki_lock <- wiki_lock_status[[1]] %>%
+      map(~sapply(.x, function(y){
+        as.character(y) %>% gsub("^\\s+|\\s+$", "", .)
+      })) %>% bind_cols()
+    
+    wiki_no_lock <- wiki_lock_status[[2]] %>%
+      map(~sapply(.x, function(y){
+        as.character(y) %>% gsub("^\\s+|\\s+$", "", .)
+      })) %>% bind_cols()
+  }else
+  {
+    
+    ## Check Wikipeida still allowing bots ##
+    
+    wiki_rbt_status <- robotstxt(domain="en.wikipedia.org")
+    
+    # Check access permission (returns true/false)
+    
+    wiki_scrape_allowed <- wiki_rbt_status$check(
+      paths = "wiki/COVID-19_pandemic_lockdowns", 
+      bot = "*")
+    
+    if(wiki_scrape_allowed)
+    {
+      
+      use_python("c/Miniconda3/python")
+      wiki_covid_lockdown <- import("wiki_covid_lockdown")
+      
+      wiki_lock_status <- wiki_covid_lockdown$wiki_covid_lockdown()
+      
+    }
+    
+    wiki_lock <- wiki_lock_status[[1]] %>%
+      map(~sapply(.x, function(y){
+        as.character(y) %>% gsub("^\\s+|\\s+$", "", .)
+      })) %>% bind_cols() %>% 
+      ## Convert start and end dates to R date type ##
+      mutate(`Start date` = as.Date(`Start date`, format = "%Y-%m-%d")) %>%
+      mutate(`End date` = as.Date(`End date`, format = "%Y-%m-%d")) %>% 
+      rename(start_date = `Start date`, end_date = `End date`)
+    
+    wiki_no_lock <- wiki_lock_status[[2]] %>%
+      map(~sapply(.x, function(y){
+        as.character(y) %>% gsub("^\\s+|\\s+$", "", .)
+      })) %>% bind_cols()
+  }
+}
+
+```
+
+
+```{r, include = FALSE}
+source("R/littler_us_st_sty_hm.R")
+
+litt_state <- littler_us_st_sty_hm(url = paste0("https://www.littler.com/",
+                                  "publication-press/publication/",
+                                  "stay-top-stay-home-list",
+                                  "-statewide"),
+                     save_file = TRUE,
+                     save_dir = 'data',
+                     use_local_file = FALSE,
+                     add_na_states = TRUE
+)
+```
+
+## Create crosswalks
+
+```{r, include = FALSE}
+source("R/csse_wb_crs_wlk.R")
+source("R/wiki_crs_wlk.R")
+
+## Countries ##
+
+global_csse_crs <- csse_global_merge %>% 
+  csse_wb_crs_wlk(wb_meta) %>% 
+  wiki_crs_wlk(wiki_lock) %>% 
+  filter(!is.na(csse_cntry))
+
+
+## U.S. States and D.C. ##
+
+# Combine list U.S. states list (from core package 'datasets') with # 
+# "District of Columbia" #
+
+state_dc <- c(datasets::state.name)
+
+# U.S. territories ##
+
+terr <- c("Puerto Rico",
+          "American Samoa",
+          "Guam",
+          "Northern Mariana Islands",
+          "Virgin Islands")
+
+```
+
+## CSSE Data Transfomrations
+
+Filter for number of events less than 1000, get totals, and calculate growth rates. Filter to exclude sub-country regions.
+
+```{r, warning = FALSE, include = FALSE}
+## Filter out Non-Occurances across Confirmed Cases, Deaths and Recovered ##
+
+source("R/csse_to_long.R")
+source("R/simple_avg_growth.R")
+source("R/cmpnd_avg_growth.R")
+source("R/implement_fit_easylinear.R")
+
+csse_events <- csse_global_merge %>% 
+  filter(., {select(., matches("\\d+/\\d+/\\d+")) %>% 
+      apply(1, function(x){!all(x < 1000)})}) %>% 
+  filter(is.na(`Province/State`)) %>% 
+  select(-`Province/State`)
+
+## Calculate Growth Rates (Simple Average, Compound Average, and Maximum)
+
+csse_grwth <- map(list("confirmed", "deaths", "recovered"), function(srs)
+{
+  grw1 <- csse_events %>%
+    csse_to_long(srs) %>% 
+    group_by_at(vars(-one_of("Series", "Date", "value"))) %>% 
+    summarise(
+      smpl_growth = simple_avg_growth(value, start_val = 10),
+      cmpnd_growth = cmpnd_avg_growth(value, start_val = 10),
+      start = if(any(value >= 10))
+        {Date[(which(value >= 10))[1]]}else{as.Date("9999-01-01")},
+      max = max(value),
+      t = sum(value >= 10)
+    ) 
+  
+  grw2 <- csse_events %>%
+    csse_to_long(srs) %>% 
+    group_by_at(vars(-one_of("Series", "Date", "value"))) %>%
+    summarise(max_grw = implement_fit_easylinear(value)[[1]],
+              max_grw_r2 = implement_fit_easylinear(value)[[2]])
+  
+  grw_rtrn <- full_join(grw1, grw2, by = intersect(colnames(grw1), 
+                                                   colnames(grw2))) %>% 
+    mutate(Series = srs) %>% 
+ select(-max, -t, -Series, everything())
+}) %>% 
+  bind_rows()
+
+```
+
+### Data exploration
+
+## Sort and plot CSSE Data
+First 4 data plots shown below. To see all click the link below.
+
+Solid line is lockdown date, as reported by Wikipedia. The dashed line is the lockdown date plus 31 days to account for time to recovery or mortality. (https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease.) p.13
+
+[Click here for Raw Data with Growth Rate and Stay at Home Order](plots/raw_against_growth.pdf)
+```{r, fig.height=10, fig.width=10, warning=FALSE,echo=FALSE, include=FALSE}
+sort_csse <- lapply(unlist(csse_grwth[grepl("deaths|recovered", 
+                                                csse_grwth$Series),
+                       "Country/Region"]), function(x)
+  {
+    csse_grwth %>%
+  ungroup() %>% 
+  filter(`Country/Region` == x) %>% 
+  filter(grepl("deaths|recovered", Series)) %>%
+  select(-one_of(c("Lat", "Long", "max_grw_r2"))) %>%
+  group_by(`Country/Region`, Series, start) %>%
+  group_map(~
+              if(nrow(.y[,2]))
+              {
+                .y[,2] <- paste0(.y[,2], "_global")
+                    left_join(.y[,-3], 
+                              csse_events[grepl("deaths|recovered", 
+                                                csse_events$Series),],
+                                    by = intersect(colnames(csse_events),
+                                                   names(.y))
+                                ) %>%
+                      csse_to_long("*") %>%
+                        filter(Date >= max(.y$start)) %>%
+                      mutate(smpl_growth = .x$smpl_growth * 1:nrow(.)) %>%
+                      mutate(cmpnd_growth = .x$cmpnd_growth * 1:nrow(.)) %>%
+                      mutate(max_grw = .x$max_grw * 1:nrow(.))
+              }) %>%
+  bind_rows() %>%
+  select(-one_of(c("Lat", "Long"))) %>%
+  rename(raw = value, country = `Country/Region`) %>%
+                           left_join(global_csse_crs, 
+                                     by = c("country" = "csse_cntry")) %>% 
+                           left_join({wiki_lock %>% 
+  group_by(`Countries and territories`) %>% 
+  summarise(mx_start = max(`Start date`))}, 
+                                     by = c("wiki_country" = 
+                                              "Countries and territories")) %>% 
+  pivot_longer(one_of(c("raw", "smpl_growth", "cmpnd_growth", "max_grw")),
+             names_to = "mthd", values_to = "n") %>%
+                           mutate(mx_start = as.Date(mx_start)) %>%
+                           mutate(Series = gsub("global", x, Series))
+                       })
+                         
+plts <- lapply(sort_csse, function(x)
+         {x %>% 
+  {
+    mx_strt <- unique(.$mx_start)
+    if(!is.na(mx_strt))
+    {
+      v_line <- geom_vline(xintercept = mx_strt)
+      v_line2 <- geom_vline(xintercept = (mx_strt + 31), linetype = "dashed")
+    }else
+    {
+      v_line <- NULL
+      v_line2 <- NULL
+    }
+    ggplot(data = .) +
+      geom_line(mapping = aes(x = Date, y = n, color = mthd)) +
+      v_line +
+      v_line2 +
+      facet_wrap(vars(Series), ncol = 2, nrow = 2)
+  }
+
+  })
+
+# pdf("plots/raw_against_growth.pdf")
+# plts
+# dev.off()
+
+
+```
+
+```{r}
+plts[1:4]
+
+```
+
+
+```{r, include=FALSE}
+source("R/join_glob_dat.R")
+csse_joined <- join_glob_dat(csse_dat = csse_grwth,
+                             lockdown_dat = wiki_lock,
+                             wb_dat = wb_rel_ind_List,
+                             wb_met = NA,
+                             crss_walk = global_csse_crs)
+ 
+```
+
+
+
+# Correlation Plots
+
+Correlation plots are or World Bank Relavent COVID-19 indicators (http://datatopics.worldbank.org/universal-health-coverage/coronavirus/), grouped by World Bank Region and income level. The idea was to seek homeogenous groupings between countries with regards to the impact of COVID-19. East Asia & Pacific: High income shows some correlatoin, but more research is needed.
+
+
+[Click here to see all correlation plots](plots/corr_plots.pdf)
+
+```{r, include=FALSE}
+source("R/fltr_crss_wb_cat.R")
+wb_dat <- csse_joined %>%
+  ungroup %>% 
+  select(topic, indicator.id, wb_name, value) %>%
+  mutate(value = as.numeric(value)) %>% 
+  unique() %>% 
+  left_join(select(wb_meta, name, region.value, 
+                                incomeLevel.value), by = c("wb_name" ="name"))
+
+corr_dat <- lapply(unique(wb_meta$incomeLevel.value), function(x)
+  {
+  inc_rgn <- lapply(unique(wb_meta$region.value), function(y)
+  {
+    corr_wb <- wb_dat %>% 
+      filter(wb_name %in% {fltr_crss_wb_cat(incomeLevel.value, x) %>% 
+               fltr_crss_wb_cat(region.value, y, .)}$wb_name) %>% 
+      select(-topic, -incomeLevel.value, -region.value) %>%
+      data.frame(stringsAsFactors = FALSE) %>% 
+      pivot_wider(names_from = indicator.id, values_from = value) %>%
+      
+      {if(nrow(.))
+      {
+        tmp_dat <- data.frame(., stringsAsFactors = FALSE)
+        rownames(tmp_dat) <- tmp_dat$indicator.value
+        tmp_dat <- tmp_dat[,-1]
+        tmp_dat
+      }else
+      {
+        NULL
+      }
+      }
+  })
+  names(inc_rgn) <- paste(unique(wb_meta$region.value), x, sep = ": ")
+  return(inc_rgn)
+}) %>% lapply(., function(x){Filter(Negate(is.null),x)}) %>% 
+  unlist(., recursive = FALSE)
+
+corr_rslt <- corr_dat  %>% 
+  map(~cor(.x, method = "pearson", 
+                  use = "pairwise.complete.obs")) %>% 
+  Filter(function(x){!all(is.na(x)|abs(x) == 1)}, .)
+
+corr_dat <- corr_dat[names(corr_dat) %in% names(corr_rslt)]
+  
+corr_plts <- map2(corr_dat, names(corr_dat), function(x, y)
+{
+  ggcorr(x, label = TRUE) +
+  ggtitle(y)
+})
+
+
+
+# pdf("plots/corr_plots.pdf")
+# corr_plts
+# dev.off()
+
+```
+
+```{r}
+corr_plts[3]
+```
+
+
+## Data treatment and linkage
+
+Filter CSSE data with world bank categories and link with Wikipedia lockdown information
+Take countries with no lockdown order and group them by their 'region.value' and 'incomeLevel.value from the World Bank.
+Format the sorted data by creating before and after lockdown dummy and dummy for in-or-out of lockdown set. (Actually take 31 days after lockdown imposed as binary turning point for the time dummy accounting for the lag effect in mortality and recovery.)
+
+
+```{r}
+source("R/fltr_crss_wb_cat.R")
+no_lock_countries <- c(wiki_no_lock$`Countries and territories`[
+  wiki_no_lock$`Countries and territories` %in% 
+    global_csse_crs$wb_name][-5], "Korea, Rep.")
+
+csse_no_lock <- no_lock_countries %>% map(~
+                            {
+                              wb_meta %>% filter(
+                                {
+                                  name %in% .x 
+                                }
+                              )%>%  
+                                {
+                                  left_join(select(., 
+                                                   incomeLevel.value, 
+                                                   region.value),
+                                             wb_meta, 
+                                            by = c("incomeLevel.value", 
+                                                   "region.value")) %>%
+                                    select(name)
+                                } %>%
+                                unlist() %>% 
+                                paste(collapse = "|") %>% 
+                                fltr_crss_wb_cat(name, .) %>% 
+                                select(csse_cntry) %>%
+                                { 
+                                  filter(bind_rows(sort_csse),
+                                         country %in% unlist(.)) %>%
+                                    #### Create treatment effect dummy  ##
+                                    ## Filter out all non-locked except ##
+                                    ## non-locked of interest in list the  ##
+                                    ## element. Later each locked country ##
+                                    ## will be run in a seperate equation ##
+                                    ## against the locked in it's group/list. ##
+                                    mutate(lock = ifelse(wb_name %in%
+                                                           no_lock_countries,
+                                      0, 1)) %>% 
+                                    filter(!(lock == "N" & wb_name == .x)) %>% 
+                                    mutate(Start_Lag = mx_start + 31) %>% 
+                                    filter(mthd == "raw" & grepl("death|recov",
+                                                                 Series)) %>% 
+                                    select(country, Series, 
+                                           Date, Start_Lag, n, lock)
+                                }
+                            })
+
+
+```
+
+
+## Results
+
+Model difference-in-difference equations and report findings.
+
+Differnce in difference for lockdown effect on mortality.
+
+Looking at mortality and recovery rates, rather than confirmed cases, as a better indicator of disease spread under nascent testing. As, such a 31 day lag was added to the indicator to adjust for the time to recovery and or mortality. (https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease.), p. 14
+
+## Diff-in-diff Mortality
+
+[This site was helpful in setting up the difference-in-difference equations.](https://rpubs.com/Sternonyos/528154)
+
+```{r, include=FALSE, warning=FALSE}
+diff_in_diff_mortality <- csse_no_lock %>% map2(., no_lock_countries, 
+                                                function(x, y)
+{
+  no_lock_geo <- filter(x, country %in% y)
+  lock_geo <- filter(x, !country %in% y)
+  lock_geo %>% group_by(country, Series) %>%
+    group_map(~
+                {
+                  model_dat <- cbind(.y, .x) %>% 
+                      bind_rows(no_lock_geo) %>% 
+                    filter(grepl("death", Series))
+                  
+                  if(length(unique(model_dat$country)) != 2)
+                  {
+                    return(NULL)
+                  }else
+                  {
+                    model_dat <- model_dat %>%
+                      #### Create time dummy ####
+                    ## Use max(na.rm) because unique value and want to extend ##
+                    ## the effect to both series. ##
+                    mutate(time = ifelse(max(Start_Lag,
+                                             na.rm = TRUE) >= Date, 1, 0)) %>%
+                      #### Create interaction for Difference in Differences ####
+                    mutate(diff_in_diff = time * lock)
+                    
+                    fit <- tryCatch({lm(n ~ time + lock + diff_in_diff,
+                                        data = model_dat)}, error = function(e){
+                                          return(NULL)
+                                        })
+                    return(list(model_dat, fit))
+                  }
+                  
+
+                })
+}) %>% unlist(recursive = FALSE) %>% Filter(Negate(is.null), .)
+
+
+## Get names from data sets returned ##
+
+names(diff_in_diff_mortality) <- sapply(
+  1:length(diff_in_diff_mortality), 
+  function(x){diff_in_diff_mortality[[x]][[1]] %>% 
+      select(country, lock) %>% 
+      unique() %>% apply(., 1, function(x)
+      {paste(x, collapse = ":")}) %>% paste(collapse = "-")})
+
+
+```
+
+
+# Analysis
+
+The analysis here is preliminary. We do see from the results of these basic difference in difference tests, significant results on the differnce-in-difference in some cases. Usually the sign is negative meaning that the lock downs may reduce mortality and recovery. This makes sense, as these are both proxies for spread of the disease at this point. 
+
+###In the results below country: 1-country: 0 indicate the lockdown, treatment case, and no lockdown case respectively.
+
+```{r}
+map2(diff_in_diff_mortality, names(diff_in_diff_mortality), function(x, y)
+  {
+  if(summary(x[[2]])$r.squared > .65)
+  {
+    y
+    summary(x[[2]])
+  }
+  })
+```
+
+## Diff-in-diff Recovered
+
+```{r, warning=FALSE, include=FALSE}
+diff_in_diff_recovered <- csse_no_lock %>% map2(., no_lock_countries, 
+                                                function(x, y)
+{
+  no_lock_geo <- filter(x, country %in% y)
+  lock_geo <- filter(x, !country %in% y)
+  lock_geo %>% group_by(country, Series) %>%
+    group_map(~
+                {
+                  model_dat <- cbind(.y, .x) %>% 
+                    bind_rows(no_lock_geo) %>% 
+                    filter(grepl("recover", Series))
+                  
+                  if(length(unique(model_dat$country)) != 2)
+                  {
+                    return(NULL)
+                  }else
+                  {
+                    model_dat <- model_dat %>%
+                      #### Create time dummy ####
+                    ## Use max(na.rm) because unique value and want to extend ##
+                    ## the effect to both series. ##
+                    mutate(time = ifelse(max(Start_Lag,
+                                             na.rm = TRUE) >= Date, 1, 0)) %>%
+                      #### Create interaction for Difference in Differences ####
+                    mutate(diff_in_diff = time * lock)
+                    
+                    fit <- tryCatch({lm(n ~ time + lock + diff_in_diff,
+                                        data = model_dat)}, error = function(e){
+                                          return(NULL)
+                                        })
+                    return(list(model_dat, fit))
+                  }
+                  
+                  
+                })
+}) %>% unlist(recursive = FALSE) %>% Filter(Negate(is.null), .)
+
+## Get names from data sets returned ##
+
+names(diff_in_diff_recovered) <- sapply(1:length(diff_in_diff_recovered), 
+       function(x){diff_in_diff_recovered[[x]][[1]] %>% 
+           select(country, lock) %>% 
+           unique() %>% apply(., 1, function(x)
+             {paste(x, collapse = ":")}) %>% paste(collapse = "-")})
+
+
+
+```
+
+```{r}
+map2(diff_in_diff_recovered, names(diff_in_diff_recovered), function(x, y)
+  {
+  if(summary(x[[2]])$r.squared > .65)
+  {
+    y
+    summary(x[[2]])
+  }
+  })
+```
+
+
