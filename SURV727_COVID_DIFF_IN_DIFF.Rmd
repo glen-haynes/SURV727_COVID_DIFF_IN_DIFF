@@ -548,7 +548,7 @@ diff_in_diff_mortality <- csse_no_lock %>% map2(., no_lock_countries,
                     ## Use max(na.rm) because unique value and want to extend ##
                     ## the effect to both series. ##
                     mutate(time = ifelse(max(Start_Lag,
-                                             na.rm = TRUE) >= Date, 1, 0)) %>%
+                                             na.rm = TRUE) < Date, 1, 0)) %>%
                       #### Create interaction for Difference in Differences ####
                     mutate(diff_in_diff = time * lock)
                     
@@ -626,7 +626,7 @@ diff_in_diff_recovered <- csse_no_lock %>% map2(., no_lock_countries,
                     ## Use max(na.rm) because unique value and want to extend ##
                     ## the effect to both series. ##
                     mutate(time = ifelse(max(Start_Lag,
-                                             na.rm = TRUE) >= Date, 1, 0)) %>%
+                                             na.rm = TRUE) < Date, 1, 0)) %>%
                       #### Create interaction for Difference in Differences ####
                     mutate(diff_in_diff = time * lock)
                     
@@ -694,14 +694,10 @@ for(i in 1:ceiling(length(results_d_d_recov) / 3))
 
 # Analysis and Conclusion
 
-Most of these models present the expected, negative, sign on the diff-in-diff paramter, but not all. These negative signed cases are consistent with the expectation that implementation of a lockdown order reduces mortality and recovery numbers, which in turn are our rough proxies for a reduction in the spread of the disease. The analysis here is preliminary and nothing definitive was expected to be found.
+A little less than half the models present the expected, negative, sign on the diff-in-diff paramter. These negative signed cases are consistent with the expectation that implementation of a lockdown order reduces mortality and recovery numbers, which in turn are our rough proxies for a reduction in the spread of the disease. The analysis here is preliminary and nothing definitive was expected to be found.
 
 Potentailly condounding factors include the following: there are more policy choices available that may have been implemented in countries without lockdowns around the time of the lockdown compared in the various models; it is possible that citizen behavior within countries without lockdowns still mirrored their lockdown counterpart, if people could have largely chosen to stay at home on their own accord. Finally the groupings chosen here, while logical, were done in a rough-and-ready way.
 
 In the future, more detailed and extensive exploratory analysis of country groupings could be done to establish within grouping homogeniety. Potential covariates could be researched and added to the difference models, perhaps to help control for some important differences. 
 
-<<<<<<< HEAD
 # References
-=======
-## References
->>>>>>> 39f9e6ca807195cd2edccd74a51dc01f37246bee
