@@ -700,4 +700,8 @@ Potentailly condounding factors include the following: there are more policy cho
 
 In the future, more detailed and extensive exploratory analysis of country groupings could be done to establish within grouping homogeniety. Potential covariates could be researched and added to the difference models, perhaps to help control for some important differences. 
 
+<<<<<<< HEAD
 # References
+=======
+## References
+>>>>>>> 39f9e6ca807195cd2edccd74a51dc01f37246bee
