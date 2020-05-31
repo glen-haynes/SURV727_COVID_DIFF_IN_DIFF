@@ -1,5 +1,5 @@
 ---
-title: "Early Analysis of Relative Lock Down Efficacy in Fighting COVID-19" 
+title: "Early Analysis of Relative Lockdown Efficacy in Fighting COVID-19" 
 subtitle: "Difference in Differences Modeling by World Bank Groupings"
 author: "Glen Haynes"
 date: "`r Sys.Date()`"
@@ -7,9 +7,40 @@ output:
   pdf_document:
     toc: yes
     df_print: kable
+header-includes:
+    - \usepackage{setspace}\doublespacing 
 params:
   use_saved_files: TRUE
   use_wiki_csv: FALSE
+urlcolor: blue
+references:
+- id: nyro2019
+  title: Impact assessment using difference-in-difference estimator
+  author:
+  - family: Nyro
+    given: Stanley
+  container-title: RPubs by RStudio
+  issued:
+    year: 2019
+  URL: 'https://rpubs.com/Sternonyos/528154'
+- id: Colonescu2016
+  title: Principles of Econometrics with R
+  author:
+  - family: Colonescu
+    given: Constantin 
+  container-title: bookdown.org
+  issued:
+    year: 2016
+  URL: 'https://bookdown.org/ccolonescu/RPoE4/indvars.html'
+- id: who2020
+  title: Report of the WHO-China Joint Mission on Coronavirus Disease 2019 (COVID-19) 
+  author:
+  - family: WHO-China-Joint
+    given: 
+  container-title: World Health Organization
+  issued:
+    year: 2020
+  URL: 'https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease.'
 ---
 
 ```{r, include = FALSE}
@@ -28,6 +59,7 @@ params:
 # install.packages('readr')
 # install.packages('ggcorrplot')
 # install.packages('GGally')
+# install.packages('stargazer')
 library(tidyverse)
 library(tidyselect)
 library(purrr)
@@ -43,92 +75,29 @@ library(growthrates)
 library(readr)
 library(ggcorrplot)
 library(GGally)
+library(stargazer)
 ```
 
-## Introduction
+# Introduction
 
+Lockdowns have social and economic costs but are implemented to try to slow the rapid spread of COVID-19 and thereby mitigate a greater harm. A lockdown policy directive is essentially the application of a treatment to the whole of a society. While it is not the same kind of treatment provided in a laboratory setting, with the specific measurement opportunities a lab provides, there are still tools available to measure these policy effects. This paper looks at the application of one such tool, difference-in-differences modeling, to explore measuring these effects. The difference-in-differences models constructed here consider the lockdown interventions as treatment effects and attempt to compare the outcomes of mortality and recovery rates among treated and untreated countries grouped by World Bank geographical and income-level classifications.
 
-The spirit of this analysis is exploratory. COVID-19 is a recent phenomenon and many measures of the effects it has on a given population are still being refined. The work here is not meant to be a fully rigorous treatment, but instead the laying out of framework trying to better understand how to approach a problem like this one, and seek ways to understand the effectiveness or our responses to the situation.
-  Identifying and linking relevant data sources from The Center for Systems Science and Engineering (CSSE) at John's Hopkins University with economic and social data from the World Bank along reports of the stay-at-home or lock down order policies governments is one of the efforts put forward here. The goal is to identify the groupings of similar populations with differing policy in place to begin to examine the effectiveness of the policy. Specifically, is there a measureable effect from the implemntation of a lock down order.
-  To explore this we'll look at correlations of the World Bank's relevant COVID-19 indicators among their regional and economic groupings. Finally we'll examine some basic differnce-in-difference modeling among countries grouped by World Bank regions and income level groupings. 
- [https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv; http://datatopics.worldbank.org/universal-health-coverage/coronavirus/; https://en.wikipedia.org/wiki/COVID-19_pandemic_lockdowns].
+  The groups under comparison in the models need to be similar to meaningfully consider the effect of treatment. Ideally, for the analysis, the groups would only differ in whether they received the treatment. This scenario is clearly not possible. To examine similarity in comparison groups, we will conduct correlation analysis on a set of relevant COVID-19 indicators identified by the World Bank.
 
-## Data
+Finally, a note on intent is included. The spirit of this analysis is exploratory. COVID-19 is a recent phenomenon and many measures of the eﬀects it has on a given population are still being reﬁned. The work here is not meant to be a fully rigorous treatment, but instead the laying out of framework trying to better understand how to approach a problem like this one, and seek ways to understand the eﬀectiveness or our responses to the situation. Identifying and linking relevant data sources from The Center for Systems Science and Engineering (CSSE) at John’s Hopkins University with economic and social data from the World Bank, along with reports of lockdown orders efficiently in a reusable set of statistical software tools, allowing for further statistical analysis beyond the scope of this paper, is a major portion of the eﬀort put forward here.
 
-This section describes the data sources and the data gathering process.
+# Data
 
-```{r, message=FALSE}
-## Load functions ##
+Three main data sources are used for analysis: daily time series summary tables of COVID-19 deaths and recovered cases from the COVID-19 Data Repository by the Center for Systems Science and Engineering (CSSE) at Johns Hopkins University; World Bank indicator data and country categories; and country-level COVID-19 pandemic lockdowns status from Wikipedia. For CSSE and World Bank data, custom R functions were constructed to retrieve the data. For the Wikipedia lockdown data, a Python function was adapted^[adapted from code found here: https://simpleanalytical.com/how-to-web-scrape-wikipedia-python-urllib-beautiful-soup-pandas] to collect the data. In all cases, data are transformed and linked in R to generate the results presented in this report. To link the data, a series of crosswalks was constructed using regular expression matching with filling in missing matches for a handful of countries. While functionality for producing this report with live pulls of the data from source is maintained, the data used for the report has been archived and pulled from archive, for reproducibility of the results. A short code chunk is included at the end of the Data section to illustrate the data gathering process.
 
-source("R/csse_covid_dat.R")
-source("R/csse_merge.R")
+## CSSE
 
-## List CSSE files ##
+CSSE data on COVID-19 related deaths^[https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv] and recoveries^[https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv] are used as response variables in the difference-in-difference models, as the measure of outcome. The interpretation of these data in the analysis here is meant to serve as a rough proxy for spread of the disease, such that a decrease in the acceleration of deaths or recovered cases indicates a decrease in the spread of the disease. These series are far from perfect proxies as it seems likely the number of deaths and recoveries is affected by the capacity of the particular health care systems to treat the disease. Further, under an effective mitigation strategy, you would expect deaths decrease and recoveries relative to one another. However, it is still expected that increases in COVID-19 deaths and recoveries will correlate strongly with spread of the disease, and are assumed to be rough, but viable proxies for the analysis. CSSE data on confirmed cases is also available, but it’s widely understood testing measures are generally not deployed in a way which would provide an accurate measure of the proportion of the population affected by the disease, and is not used this analysis for that reason. Finally, coutries with less than 1000 events are filtered out of the respective data sets.
 
-csse_list <- list(
-  "time_series_covid19_confirmed_US.csv",
-  "time_series_covid19_confirmed_global.csv",
-  "time_series_covid19_deaths_US.csv",
-  "time_series_covid19_deaths_global.csv",
-  "time_series_covid19_recovered_global.csv"
-)
+## World Bank
 
-csse_dat <- csse_list %>% map(~{
-  csse_covid_dat(.x, 
-                 use_saved_file = params$use_saved_files)
-})
-
-csse_us_merge <- csse_merge(csse_dat, 'us', 'Series')
-
-csse_global_merge <- csse_merge(csse_dat, 'global', 'Series')
-
-rm(csse_dat)
-```
-
-```{r, message = FALSE}
-source("R/wrld_bk_dat.R")
-source("R/wb_ind_lst.R")
-
-## Get World Bank meta data ##
-
-wb_meta <- wrld_bk_dat(use_local_json = params$use_saved_files)
-
-## List of relevant indicators ##
-
-if(params$use_saved_files)
-{
-  wb_relevant_indicators <- wb_ind_lst(dat_loc = "data/covid-indicators.csv")
-}else
-{
-  wb_relevant_indicators <- wb_ind_lst()
-}
-
-## Limit relevant indicators ##
-
-wb_relevant_indicators <- wb_relevant_indicators[c(1, 5, 18, 25, 37, 47),]
-
-## Relevant indicators and other data ##
-
-wb_rel_ind_List <- map2(
-  c(wb_relevant_indicators$id, 'SP.POP.TOTL'), ## Add Population
-  c(wb_relevant_indicators$topic, "Extra_to_rel"),
-  function(x,y){wrld_bk_dat(indicator = x,
-                            date='2015:2020',
-                            use_local_json = TRUE,
-                            save_file = FALSE,
-                            save_dir = 'data/wb-rel-ind-data',
-                            dat_addrs = NULL) %>%
-      mutate(topic = y) %>% 
-      group_by(countryiso3code) %>%
-      group_map(~ .x %>% 
-                  filter(!is.na(value)) %>%
-                  filter(date == max(date))) %>% 
-      bind_rows()}) %>% 
-  bind_rows()
-
-```
-
-```{r, message=FALSE}
+World Bank data is used in two ways. World bank geographical regions and income-level categories are used to group countries so that difference-in-difference models are developed for treated and untreated countries within the same groupings. Next, a list of selected relevant (to COVID-19) indicators^[http://datatopics.worldbank.org/universal-health-coverage/coronavirus/; https://data.worldbank.org/indicator/SP.POP.TOTL?view=chart] (along with population) is collected from the World Bank page, ‘Understanding the Coronavirus (COVID-19) pandemic through data.’ The data is pulled in through their API^[https://api.worldbank.org/v2/country/all/indicator/].Within group correlation analysis is then conducted on these data to examine similarities among relevant indicators within the groups.
+```{r, include = FALSE}
 if(params$use_wiki_csv)
 {
   wiki_lock <- read_csv(wiki_lock, "data/wiki_lock.csv")
@@ -194,58 +163,97 @@ if(params$use_wiki_csv)
 
 ```
 
+## Wikipedia Lockdown 
 
-```{r, include = FALSE}
-source("R/littler_us_st_sty_hm.R")
+Tables from the Wikipedia page, ‘COVID-19 pandemic lockdowns’ provide both the list of countries with lockdowns in place along with the starting and ending dates of the lockdowns, and the list of countries with no lockdown in place. For countries with multiple jurisdictions, including various start dates, the latest jurisdictional start date is chosen as the country start date for the country under this analysis. Since the time from onset of symptoms of the disease to outcome can range from 2 to 6 weeks for recovery and 2 to 8 weeks for those who have died^[https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease, pg. 14][@who2020], a lag of 31 days is added to the start date to create an effective start date to more accurately measure the effect of the actual start date. The effective start date is the start date represented in the graphics and model results included in this report, unless otherwise indicated. The following is a list of countries with no lockdowns in place: `r paste(unlist(wiki_no_lock[is.na(wiki_no_lock$Place)|wiki_no_lock$Place == "NA", 1]), collapse = ", ")`.
 
-litt_state <- littler_us_st_sty_hm(url = paste0("https://www.littler.com/",
-                                  "publication-press/publication/",
-                                  "stay-top-stay-home-list",
-                                  "-statewide"),
-                     save_file = TRUE,
-                     save_dir = 'data',
-                     use_local_file = FALSE,
-                     add_na_states = TRUE
+### Short code chunks illustrating the data gathering process
+
+```{r, message=FALSE}
+## Load custom functions created to pull and merge CSSE data##
+source("R/csse_covid_dat.R")
+source("R/csse_merge.R")
+## List CSSE files ##
+csse_list <- list(
+  "time_series_covid19_confirmed_global.csv",
+  "time_series_covid19_deaths_global.csv",
+  "time_series_covid19_recovered_global.csv"
 )
+## Collect data from the web ##
+csse_dat <- csse_list %>% map(~{
+  csse_covid_dat(.x, 
+                 use_saved_file = params$use_saved_files)
+})
+## Combine the collected data files into a single table ##
+csse_global_merge <- csse_merge(csse_dat, 'global', 'Series')
+rm(csse_dat)
 ```
 
-## Create crosswalks
 
 ```{r, include = FALSE}
+source("R/wrld_bk_dat.R")
+source("R/wb_ind_lst.R")
+
+## Get World Bank meta data ##
+
+wb_meta <- wrld_bk_dat(use_local_json = params$use_saved_files)
+
+## List of relevant indicators ##
+
+if(params$use_saved_files)
+{
+  wb_relevant_indicators <- wb_ind_lst(dat_loc = "data/covid-indicators.csv")
+}else
+{
+  wb_relevant_indicators <- wb_ind_lst()
+}
+
+## Limit relevant indicators ##
+
+wb_relevant_indicators <- wb_relevant_indicators[c(1, 5, 18, 25, 37, 47),]
+
+## Relevant indicators and other data ##
+
+wb_rel_ind_List <- map2(
+  c(wb_relevant_indicators$id, 'SP.POP.TOTL'), ## Add Population
+  c(wb_relevant_indicators$topic, "Extra_to_rel"),
+  function(x,y){wrld_bk_dat(indicator = x,
+                            date='2015:2020',
+                            use_local_json = TRUE,
+                            save_file = FALSE,
+                            save_dir = 'data/wb-rel-ind-data',
+                            dat_addrs = NULL) %>%
+      mutate(topic = y) %>% 
+      group_by(countryiso3code) %>%
+      group_map(~ .x %>% 
+                  filter(!is.na(value)) %>%
+                  filter(date == max(date))) %>% 
+      bind_rows()}) %>% 
+  bind_rows()
+
+```
+
+```{r, message = FALSE}
 source("R/csse_wb_crs_wlk.R")
 source("R/wiki_crs_wlk.R")
-
+## load crosswalks created and use to merge CSSE, World Bank and ##
+## Wikipedia lockdown data ##
 ## Countries ##
-
 global_csse_crs <- csse_global_merge %>% 
   csse_wb_crs_wlk(wb_meta) %>% 
   wiki_crs_wlk(wiki_lock) %>% 
   filter(!is.na(csse_cntry))
-
-
-## U.S. States and D.C. ##
-
-# Combine list U.S. states list (from core package 'datasets') with # 
-# "District of Columbia" #
-
-state_dc <- c(datasets::state.name)
-
-# U.S. territories ##
-
-terr <- c("Puerto Rico",
-          "American Samoa",
-          "Guam",
-          "Northern Mariana Islands",
-          "Virgin Islands")
-
 ```
 
-## CSSE Data Transfomrations
-
-Filter for number of events less than 1000, get totals, and calculate growth rates. Filter to exclude sub-country regions.
+# Results
 
 ```{r, warning = FALSE, include = FALSE}
+## CSSE Data Transformations
 ## Filter out Non-Occurances across Confirmed Cases, Deaths and Recovered ##
+
+
+## Filter for number of events less than 1000, get totals, and calculate ##
+## growth rates. Filter to exclude sub-country regions. ##
 
 source("R/csse_to_long.R")
 source("R/simple_avg_growth.R")
@@ -289,14 +297,12 @@ csse_grwth <- map(list("confirmed", "deaths", "recovered"), function(srs)
 
 ```
 
-### Data exploration
+## Data exploration
 
-## Sort and plot CSSE Data
-First 4 data plots shown below. To see all click the link below.
+### Raw CSSE data against lockdown metrics and growth rates
 
-Solid line is lockdown date, as reported by Wikipedia. The dashed line is the lockdown date plus 31 days to account for time to recovery or mortality. (https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease.) p.13
+A few example plots of the raw CSSE data with some simple and compound growth rate calculations are shown below as first step in exploratory data analysis. Caluculation of maximum growth rate, using the R package, 'growthrates' was intitated but not fully implemented at the time of this report was generated. In these graphics, the solid vertical line, where present, indicates the start date of a lockdown and the dashed line indicates the calculation of an effective start date discussed in the introduction (the actual start date plus 31 days). (For brevity the first four data plots shown below. To see all available plots click [here](plots/raw_against_growth.pdf)).
 
-[Click here for Raw Data with Growth Rate and Stay at Home Order](plots/raw_against_growth.pdf)
 ```{r, fig.height=10, fig.width=10, warning=FALSE,echo=FALSE, include=FALSE}
 sort_csse <- lapply(unlist(csse_grwth[grepl("deaths|recovered", 
                                                 csse_grwth$Series),
@@ -369,8 +375,8 @@ plts <- lapply(sort_csse, function(x)
 
 ```
 
-```{r}
-plts[1:4]
+```{r, warning = FALSE, echo = FALSE}
+plts[1:2]
 
 ```
 
@@ -385,14 +391,6 @@ csse_joined <- join_glob_dat(csse_dat = csse_grwth,
  
 ```
 
-
-
-# Correlation Plots
-
-Correlation plots are or World Bank Relavent COVID-19 indicators (http://datatopics.worldbank.org/universal-health-coverage/coronavirus/), grouped by World Bank Region and income level. The idea was to seek homeogenous groupings between countries with regards to the impact of COVID-19. East Asia & Pacific: High income shows some correlatoin, but more research is needed.
-
-
-[Click here to see all correlation plots](plots/corr_plots.pdf)
 
 ```{r, include=FALSE}
 source("R/fltr_crss_wb_cat.R")
@@ -453,19 +451,21 @@ corr_plts <- map2(corr_dat, names(corr_dat), function(x, y)
 
 ```
 
-```{r}
+### Correlation Plots
+
+Correlation plots are developed using the following World Bank Relavent COVID-19 [indicators](http://datatopics.worldbank.org/universal-health-coverage/coronavirus/):  `r paste(unlist(unique(csse_joined$indicator.value)), collapse = "; ")`. (These indicators have the following IDs respectively: `r paste(unlist(unique(csse_joined$indicator.id)), collapse = ", ")`). Countries are grouped by World Bank Region and income level and then correlation plots of these indicators are constructed. The idea was to seek homeogenous groupings between countries with regards to the impact of COVID-19. East Asia & Pacific: High income shows some correlatoin, but more research is needed. (The correlation plot for East Asia & Pacific: High income is shown below. Click [here](plots/corr_plots.pdf) to see all correlation plots).
+
+
+
+
+```{r, echo = FALSE}
 corr_plts[3]
 ```
 
 
-## Data treatment and linkage
-
-Filter CSSE data with world bank categories and link with Wikipedia lockdown information
-Take countries with no lockdown order and group them by their 'region.value' and 'incomeLevel.value from the World Bank.
-Format the sorted data by creating before and after lockdown dummy and dummy for in-or-out of lockdown set. (Actually take 31 days after lockdown imposed as binary turning point for the time dummy accounting for the lag effect in mortality and recovery.)
 
 
-```{r}
+```{r, include = FALSE}
 source("R/fltr_crss_wb_cat.R")
 no_lock_countries <- c(wiki_no_lock$`Countries and territories`[
   wiki_no_lock$`Countries and territories` %in% 
@@ -516,17 +516,14 @@ csse_no_lock <- no_lock_countries %>% map(~
 ```
 
 
-## Results
+## Difference-in-differences models (Diff-in-diff)
 
-Model difference-in-difference equations and report findings.
+Simple difference-in-differences models are constructed[@nyro2019, @Colonescu2016] using pairwise CSSE counts of COVID-19 deaths and recoveries as the outcome variable, alternatively, where a no lockdown country is paired with a lockdown country within World Bank region and income-level classification. The models are constructed by creating dummy variables for in-or-out of the locked-down, treatement group (labeled, 'lock' where lock = 1, means treated), before or after the treatment intervention (labeled, 'time' where time = 1 is after treatment implementation) and the interaction of those two (labeled 'diff_in_diff'). The diff-in-diff parameter is the main one of interest for this analysis. The interpretation of the diff-in-diff parameter encapsulates the treatment effect we are attempting to discern. It can be interpreted as the difference in the country pairs compared in time before and after treatment implementation within the locked-down country. (So it's the difference in time of the differences in the countrys, hence, difference-in-differences). 
 
-Differnce in difference for lockdown effect on mortality.
+Given the interpretation of mortality and recovery figures as proxies for spread of the disease, the basic expectation here is that the lockdown treatment, where effective, should have a negative sign, indicating the lockdown slowed the disease in the lockdown country relative to the unlocked one.
 
-Looking at mortality and recovery rates, rather than confirmed cases, as a better indicator of disease spread under nascent testing. As, such a 31 day lag was added to the indicator to adjust for the time to recovery and or mortality. (https://www.who.int/docs/default-source/coronaviruse/who-china-joint-mission-on-covid-19-final-report.pdf#:~:text=Using%20available%20preliminary%20data%2C,severe%20or%20critical%20disease.), p. 14
+The tables below show the model results. The first set is for mortality and the second for recovery outcomes. Results are shown for models with a an R-squared value of greater than or equal to 0.65. Moratality and recovery data is not available for all countries. On notation, column names identify the treated country as '[country name]: 1' against the untreated country denoted '[country name]: 2.'  
 
-## Diff-in-diff Mortality
-
-[This site was helpful in setting up the difference-in-difference equations.](https://rpubs.com/Sternonyos/528154)
 
 ```{r, include=FALSE, warning=FALSE}
 diff_in_diff_mortality <- csse_no_lock %>% map2(., no_lock_countries, 
@@ -576,28 +573,35 @@ names(diff_in_diff_mortality) <- sapply(
       unique() %>% apply(., 1, function(x)
       {paste(x, collapse = ":")}) %>% paste(collapse = "-")})
 
-
-```
-
-
-# Analysis
-
-The analysis here is preliminary. We do see from the results of these basic difference in difference tests, significant results on the differnce-in-difference in some cases. Usually the sign is negative meaning that the lock downs may reduce mortality and recovery. This makes sense, as these are both proxies for spread of the disease at this point. 
-
-###In the results below country: 1-country: 0 indicate the lockdown, treatment case, and no lockdown case respectively.
-
-```{r}
-map2(diff_in_diff_mortality, names(diff_in_diff_mortality), function(x, y)
+results_d_d_mortality <- map2(diff_in_diff_mortality, names(diff_in_diff_mortality), function(x, y)
   {
   if(summary(x[[2]])$r.squared > .65)
   {
-    y
-    summary(x[[2]])
+    rtrn_lst <- list(x[[2]], summary(x[[2]]))
+    names(rtrn_lst) <- y
+    return(rtrn_lst)
   }
-  })
+  }) %>% 
+  Filter(Negate(is.null), .)
 ```
 
-## Diff-in-diff Recovered
+### Diff-in-diff Mortality response tables
+
+```{r, results='asis', echo = FALSE}
+for(i in 1:ceiling(length(results_d_d_mortality) / 3))
+{
+  index <- (i:(i+2) + ((i - 1) * 3))
+  if(index[1] > 1){index <- index - (i - 1)}
+  if(index[3] > length(results_d_d_mortality))
+    {index <- index[1]:length(results_d_d_mortality)}
+  results_d_d_mortality[index] %>% 
+    map(~.x[[1]]) %>% 
+    stargazer(., column.labels = names(.), header = FALSE,
+              title = "Diff-in-diff: Mortality outcome",
+              float = FALSE)
+}
+```
+
 
 ```{r, warning=FALSE, include=FALSE}
 diff_in_diff_recovered <- csse_no_lock %>% map2(., no_lock_countries, 
@@ -645,19 +649,55 @@ names(diff_in_diff_recovered) <- sapply(1:length(diff_in_diff_recovered),
            unique() %>% apply(., 1, function(x)
              {paste(x, collapse = ":")}) %>% paste(collapse = "-")})
 
-
-
-```
-
-```{r}
-map2(diff_in_diff_recovered, names(diff_in_diff_recovered), function(x, y)
+results_d_d_recov <- map2(diff_in_diff_recovered, names(diff_in_diff_recovered), function(x, y)
   {
   if(summary(x[[2]])$r.squared > .65)
   {
-    y
-    summary(x[[2]])
+    rtrn_lst <- list(x[[2]], summary(x[[2]]))
+    names(rtrn_lst) <- y
+    return(rtrn_lst)
   }
-  })
+  }) %>% 
+  Filter(Negate(is.null), .)
+
+# show_rec_rslts <- list()
+
+# for(i in 1:ceiling(length(results_d_d_recov) / 3))
+# {
+#   index <- (i:(i+2) + ((i - 1) * 3))
+#   if(index[1] > 1){index <- index - (i - 1)}
+#   if(index[3] > length(results_d_d_recov))
+#     {index <- index[1]:length(results_d_d_recov)}
+#   show_rec_rslts[[i]] <- results_d_d_recov[index] %>% 
+#     map(~.x[[1]]) %>% 
+#     stargazer(., column.labels = names(.))
+# }
+
 ```
 
+### Diff-in-diff Recovery response tables
 
+```{r, results='asis', echo = FALSE}
+for(i in 1:ceiling(length(results_d_d_recov) / 3))
+{
+  index <- (i:(i+2) + ((i - 1) * 3))
+  if(index[1] > 1){index <- index - (i - 1)}
+  if(index[3] > length(results_d_d_recov))
+    {index <- index[1]:length(results_d_d_recov)}
+  results_d_d_recov[index] %>% 
+    map(~.x[[1]]) %>% 
+    stargazer(., column.labels = names(.), header = FALSE,
+              title = "Diff-in-diff: Recovery outcome",
+              float = FALSE)
+}
+```
+
+# Analysis and Conclusion
+
+Most of these models present the expected, negative, sign on the diff-in-diff paramter, but not all. These negative signed cases are consistent with the expectation that implementation of a lockdown order reduces mortality and recovery numbers, which in turn are our rough proxies for a reduction in the spread of the disease. The analysis here is preliminary and nothing definitive was expected to be found.
+
+Potentailly condounding factors include the following: there are more policy choices available that may have been implemented in countries without lockdowns around the time of the lockdown compared in the various models; it is possible that citizen behavior within countries without lockdowns still mirrored their lockdown counterpart, if people could have largely chosen to stay at home on their own accord. Finally the groupings chosen here, while logical, were done in a rough-and-ready way.
+
+In the future, more detailed and extensive exploratory analysis of country groupings could be done to establish within grouping homogeniety. Potential covariates could be researched and added to the difference models, perhaps to help control for some important differences. 
+
+# References
